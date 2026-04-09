@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useListSongs, getListSongsQueryKey } from "@workspace/api-client-react";
+import { useQuery } from "@tanstack/react-query";
 import { AddSongForm } from "@/components/add-song-form";
 import { SongList } from "@/components/song-list";
 import { PlaylistStatsCard } from "@/components/playlist-stats";
@@ -8,12 +9,36 @@ import { Radio } from "lucide-react";
 
 const PLAY_COUNTS_STORAGE_KEY = "vibestream-play-counts";
 
+interface PlaybackState {
+  currentSongId: number | null;
+  startedAt: string | null;
+}
+
+function sortSongsByQueueOrder<T extends { votes: number; createdAt: string }>(songs: T[]) {
+  return [...songs].sort((a, b) => {
+    if (b.votes !== a.votes) return b.votes - a.votes;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+}
+
 export function Home() {
   const { data: songs, isLoading } = useListSongs({
     query: { queryKey: getListSongsQueryKey() }
   });
+  const { data: playback } = useQuery<PlaybackState>({
+    queryKey: ["playback"],
+    queryFn: async () => {
+      const response = await fetch("/api/playback");
+      if (!response.ok) {
+        throw new Error("Failed to load playback state");
+      }
+      return response.json() as Promise<PlaybackState>;
+    },
+    refetchInterval: 2000,
+  });
   
   const [playingId, setPlayingId] = useState<number | null>(null);
+  const [playbackStartedAt, setPlaybackStartedAt] = useState<string | null>(null);
   const [playCounts, setPlayCounts] = useState<Record<number, number>>(() => {
     if (typeof window === "undefined") {
       return {};
@@ -27,18 +52,42 @@ export function Home() {
     }
   });
   const previousPlayingId = useRef<number | null>(null);
-  const sortedSongs = [...(songs || [])].sort((a, b) => {
-    if (b.votes !== a.votes) return b.votes - a.votes;
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-  });
+  const sortedSongs = sortSongsByQueueOrder(songs || []);
 
-  // Auto-play first song if none playing and songs exist
-  useEffect(() => {
-    if (!playingId && sortedSongs.length > 0) {
-      const topSong = sortedSongs[0];
-      setPlayingId(topSong.id);
+  const syncPlayback = async (songId: number | null, startedAt?: string) => {
+    const payload = {
+      songId,
+      startedAt: startedAt ?? new Date().toISOString(),
+    };
+
+    const response = await fetch("/api/playback", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to update playback");
     }
-  }, [sortedSongs, playingId]);
+
+    const nextPlayback = (await response.json()) as PlaybackState;
+    setPlayingId(nextPlayback.currentSongId);
+    setPlaybackStartedAt(nextPlayback.startedAt);
+  };
+
+  useEffect(() => {
+    if (playback) {
+      setPlayingId(playback.currentSongId);
+      setPlaybackStartedAt(playback.startedAt);
+      return;
+    }
+
+    if (!playingId && sortedSongs.length > 0) {
+      void syncPlayback(sortedSongs[0].id);
+    }
+  }, [playback, sortedSongs, playingId]);
 
   useEffect(() => {
     if (!playingId || previousPlayingId.current === playingId) {
@@ -72,7 +121,7 @@ export function Home() {
     }
 
     const nextSong = sortedSongs[(currentIndex + 1) % sortedSongs.length];
-    setPlayingId(nextSong.id);
+    void syncPlayback(nextSong.id);
   };
 
   return (
@@ -102,7 +151,11 @@ export function Home() {
           
           {/* Main Left Column (Player + Add) */}
           <div className="lg:col-span-7 flex flex-col gap-8 sticky top-8">
-            <Player song={playingSong} onEnded={handleSongEnded} />
+            <Player
+              song={playingSong}
+              playbackStartedAt={playbackStartedAt}
+              onEnded={handleSongEnded}
+            />
             <AddSongForm />
           </div>
 
@@ -128,7 +181,9 @@ export function Home() {
                 <SongList 
                   songs={songs || []} 
                   playingId={playingId} 
-                  onPlay={setPlayingId} 
+                  onPlay={(id) => {
+                    void syncPlayback(id);
+                  }}
                 />
               )}
             </div>

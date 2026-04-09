@@ -24,6 +24,20 @@ export async function ensureDatabase(): Promise<void> {
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
   `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS playback_state (
+      id INTEGER PRIMARY KEY,
+      current_song_id INTEGER REFERENCES songs(id) ON DELETE SET NULL,
+      started_at TIMESTAMP
+    );
+  `);
+
+  await pool.query(`
+    INSERT INTO playback_state (id, current_song_id, started_at)
+    VALUES (1, NULL, NULL)
+    ON CONFLICT (id) DO NOTHING;
+  `);
 }
 
 export * from "./schema";

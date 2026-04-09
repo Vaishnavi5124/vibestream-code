@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, songsTable } from "@workspace/db";
+import { db, pool, songsTable } from "@workspace/db";
 import { eq, desc, sql } from "drizzle-orm";
 import { AddSongBody, DeleteSongParams, VoteSongParams, VoteSongBody } from "@workspace/api-zod";
 
@@ -19,9 +19,62 @@ function extractYoutubeId(url: string): string | null {
   return null;
 }
 
+async function getPlaybackState() {
+  const result = await pool.query<{
+    current_song_id: number | null;
+    started_at: Date | null;
+  }>(`
+    SELECT current_song_id, started_at
+    FROM playback_state
+    WHERE id = 1
+  `);
+
+  const row = result.rows[0];
+  return {
+    currentSongId: row?.current_song_id ?? null,
+    startedAt: row?.started_at ? row.started_at.toISOString() : null,
+  };
+}
+
+async function setPlaybackState(songId: number | null, startedAt = new Date()) {
+  await pool.query(
+    `
+      UPDATE playback_state
+      SET current_song_id = $1, started_at = $2
+      WHERE id = 1
+    `,
+    [songId, songId === null ? null : startedAt],
+  );
+}
+
 router.get("/songs", async (req, res) => {
   const songs = await db.select().from(songsTable).orderBy(desc(songsTable.createdAt));
   res.json(songs);
+});
+
+router.get("/playback", async (_req, res) => {
+  const playback = await getPlaybackState();
+  res.json(playback);
+});
+
+router.put("/playback", async (req, res) => {
+  const { songId, startedAt } = req.body ?? {};
+
+  if (songId !== null && (!Number.isInteger(songId) || songId <= 0)) {
+    res.status(400).json({ error: "Invalid song id" });
+    return;
+  }
+
+  const playbackStartedAt =
+    typeof startedAt === "string" ? new Date(startedAt) : new Date();
+
+  if (songId !== null && Number.isNaN(playbackStartedAt.getTime())) {
+    res.status(400).json({ error: "Invalid playback start time" });
+    return;
+  }
+
+  await setPlaybackState(songId ?? null, playbackStartedAt);
+  res.json(await getPlaybackState());
 });
 
 router.get("/songs/stats", async (req, res) => {
@@ -55,6 +108,11 @@ router.post("/songs", async (req, res) => {
     .insert(songsTable)
     .values({ youtubeId, title: resolvedTitle, addedBy })
     .returning();
+
+  const playback = await getPlaybackState();
+  if (playback.currentSongId === null) {
+    await setPlaybackState(song.id);
+  }
 
   res.status(201).json(song);
 });
@@ -94,6 +152,11 @@ router.post("/songs/restore", async (req, res) => {
     })
     .returning();
 
+  const playback = await getPlaybackState();
+  if (playback.currentSongId === null) {
+    await setPlaybackState(song.id, restoredCreatedAt);
+  }
+
   res.status(201).json(song);
 });
 
@@ -110,6 +173,18 @@ router.delete("/songs/:id", async (req, res) => {
     res.status(404).json({ error: "Song not found" });
     return;
   }
+
+  const playback = await getPlaybackState();
+  if (playback.currentSongId === id) {
+    const remainingSongs = await db
+      .select()
+      .from(songsTable)
+      .orderBy(desc(songsTable.votes), desc(songsTable.createdAt));
+
+    const nextSong = remainingSongs[0] ?? null;
+    await setPlaybackState(nextSong?.id ?? null);
+  }
+
   res.status(204).send();
 });
 

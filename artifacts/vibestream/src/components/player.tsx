@@ -64,10 +64,11 @@ function loadYouTubeIframeApi(): Promise<YouTubeNamespace> {
 
 interface PlayerProps {
   song: Song | null;
+  playbackStartedAt: string | null;
   onEnded: () => void;
 }
 
-export function Player({ song, onEnded }: PlayerProps) {
+export function Player({ song, playbackStartedAt, onEnded }: PlayerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<YouTubePlayer | null>(null);
   const onEndedRef = useRef(onEnded);
@@ -82,6 +83,9 @@ export function Player({ song, onEnded }: PlayerProps) {
     }
 
     let disposed = false;
+    const startSeconds = playbackStartedAt
+      ? Math.max(0, Math.floor((Date.now() - new Date(playbackStartedAt).getTime()) / 1000))
+      : 0;
 
     void loadYouTubeIframeApi().then((YT) => {
       if (disposed || !containerRef.current) {
@@ -99,7 +103,7 @@ export function Player({ song, onEnded }: PlayerProps) {
           playsinline: 1,
           modestbranding: 1,
           iv_load_policy: 3,
-          start: 0,
+          start: startSeconds,
           origin: window.location.origin,
         },
         events: {
@@ -115,7 +119,7 @@ export function Player({ song, onEnded }: PlayerProps) {
     return () => {
       disposed = true;
     };
-  }, [song]);
+  }, [song, playbackStartedAt]);
 
   useEffect(() => {
     return () => {
