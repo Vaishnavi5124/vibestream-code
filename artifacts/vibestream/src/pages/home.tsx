@@ -27,15 +27,18 @@ export function Home() {
     }
   });
   const previousPlayingId = useRef<number | null>(null);
+  const sortedSongs = [...(songs || [])].sort((a, b) => {
+    if (b.votes !== a.votes) return b.votes - a.votes;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
 
   // Auto-play first song if none playing and songs exist
   useEffect(() => {
-    if (!playingId && songs && songs.length > 0) {
-      // Find the highest voted song or just the first one
-      const topSong = [...songs].sort((a, b) => b.votes - a.votes)[0];
+    if (!playingId && sortedSongs.length > 0) {
+      const topSong = sortedSongs[0];
       setPlayingId(topSong.id);
     }
-  }, [songs, playingId]);
+  }, [sortedSongs, playingId]);
 
   useEffect(() => {
     if (!playingId || previousPlayingId.current === playingId) {
@@ -56,6 +59,21 @@ export function Home() {
   }, [playingId]);
 
   const playingSong = songs?.find(s => s.id === playingId) || null;
+
+  const handleSongEnded = () => {
+    if (sortedSongs.length === 0 || playingId === null) {
+      return;
+    }
+
+    const currentIndex = sortedSongs.findIndex((song) => song.id === playingId);
+    if (currentIndex === -1) {
+      setPlayingId(sortedSongs[0].id);
+      return;
+    }
+
+    const nextSong = sortedSongs[(currentIndex + 1) % sortedSongs.length];
+    setPlayingId(nextSong.id);
+  };
 
   return (
     <div className="min-h-[100dvh] bg-background text-foreground relative overflow-hidden selection:bg-primary/30">
@@ -84,7 +102,7 @@ export function Home() {
           
           {/* Main Left Column (Player + Add) */}
           <div className="lg:col-span-7 flex flex-col gap-8 sticky top-8">
-            <Player song={playingSong} />
+            <Player song={playingSong} onEnded={handleSongEnded} />
             <AddSongForm />
           </div>
 

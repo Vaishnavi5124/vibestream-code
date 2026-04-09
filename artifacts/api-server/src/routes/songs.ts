@@ -59,6 +59,44 @@ router.post("/songs", async (req, res) => {
   res.status(201).json(song);
 });
 
+router.post("/songs/restore", async (req, res) => {
+  const { youtubeId, title, addedBy, votes, createdAt } = req.body ?? {};
+
+  if (
+    typeof youtubeId !== "string" ||
+    typeof title !== "string" ||
+    typeof addedBy !== "string"
+  ) {
+    res.status(400).json({ error: "Invalid restore payload" });
+    return;
+  }
+
+  const restoredVotes =
+    typeof votes === "number" && Number.isInteger(votes) ? votes : 0;
+  const restoredCreatedAt =
+    typeof createdAt === "string" || createdAt instanceof Date
+      ? new Date(createdAt)
+      : new Date();
+
+  if (Number.isNaN(restoredCreatedAt.getTime())) {
+    res.status(400).json({ error: "Invalid restore timestamp" });
+    return;
+  }
+
+  const [song] = await db
+    .insert(songsTable)
+    .values({
+      youtubeId,
+      title,
+      addedBy,
+      votes: restoredVotes,
+      createdAt: restoredCreatedAt,
+    })
+    .returning();
+
+  res.status(201).json(song);
+});
+
 router.delete("/songs/:id", async (req, res) => {
   const parsed = DeleteSongParams.safeParse(req.params);
   if (!parsed.success) {

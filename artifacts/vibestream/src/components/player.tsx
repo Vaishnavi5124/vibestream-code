@@ -1,12 +1,135 @@
+import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import type { Song } from "@workspace/api-client-react";
 import { Disc3 } from "lucide-react";
 
-interface PlayerProps {
-  song: Song | null;
+declare global {
+  interface Window {
+    YT?: YouTubeNamespace;
+    onYouTubeIframeAPIReady?: () => void;
+    __youtubeIframeApiPromise?: Promise<YouTubeNamespace>;
+  }
 }
 
-export function Player({ song }: PlayerProps) {
+interface YouTubePlayer {
+  destroy: () => void;
+  loadVideoById: (videoId: string) => void;
+}
+
+interface YouTubeNamespace {
+  Player: new (
+    element: HTMLDivElement,
+    config: {
+      videoId?: string;
+      playerVars?: Record<string, string | number>;
+      events?: {
+        onReady?: () => void;
+        onStateChange?: (event: { data: number }) => void;
+      };
+    },
+  ) => YouTubePlayer;
+  PlayerState: {
+    ENDED: number;
+  };
+}
+
+function loadYouTubeIframeApi(): Promise<YouTubeNamespace> {
+  if (window.YT) {
+    return Promise.resolve(window.YT);
+  }
+
+  if (window.__youtubeIframeApiPromise) {
+    return window.__youtubeIframeApiPromise;
+  }
+
+  window.__youtubeIframeApiPromise = new Promise<YouTubeNamespace>((resolve) => {
+    const existingScript = document.querySelector<HTMLScriptElement>(
+      'script[src="https://www.youtube.com/iframe_api"]',
+    );
+
+    if (!existingScript) {
+      const script = document.createElement("script");
+      script.src = "https://www.youtube.com/iframe_api";
+      document.head.appendChild(script);
+    }
+
+    window.onYouTubeIframeAPIReady = () => {
+      if (window.YT) {
+        resolve(window.YT);
+      }
+    };
+  });
+
+  return window.__youtubeIframeApiPromise;
+}
+
+interface PlayerProps {
+  song: Song | null;
+  onEnded: () => void;
+}
+
+export function Player({ song, onEnded }: PlayerProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const playerRef = useRef<YouTubePlayer | null>(null);
+  const onEndedRef = useRef(onEnded);
+  const loadedSongIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    onEndedRef.current = onEnded;
+  }, [onEnded]);
+
+  useEffect(() => {
+    if (!song || !containerRef.current) {
+      return;
+    }
+
+    let disposed = false;
+
+    void loadYouTubeIframeApi().then((YT) => {
+      if (disposed || !containerRef.current) {
+        return;
+      }
+
+      if (!playerRef.current) {
+        playerRef.current = new YT.Player(containerRef.current, {
+          videoId: song.youtubeId,
+          playerVars: {
+            autoplay: 1,
+            rel: 0,
+            playsinline: 1,
+          },
+          events: {
+            onStateChange: (event) => {
+              if (event.data === YT.PlayerState.ENDED) {
+                onEndedRef.current();
+              }
+            },
+          },
+        });
+
+        loadedSongIdRef.current = song.youtubeId;
+        return;
+      }
+
+      if (loadedSongIdRef.current !== song.youtubeId) {
+        playerRef.current.loadVideoById(song.youtubeId);
+        loadedSongIdRef.current = song.youtubeId;
+      }
+    });
+
+    return () => {
+      disposed = true;
+    };
+  }, [song]);
+
+  useEffect(() => {
+    return () => {
+      playerRef.current?.destroy();
+      playerRef.current = null;
+      loadedSongIdRef.current = null;
+    };
+  }, []);
+
   if (!song) {
     return (
       <div className="w-full aspect-video bg-card/20 rounded-2xl border border-border/30 flex flex-col items-center justify-center text-muted-foreground backdrop-blur-sm">
@@ -17,20 +140,15 @@ export function Player({ song }: PlayerProps) {
   }
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       className="w-full flex flex-col gap-4"
     >
       <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-black shadow-[0_0_50px_rgba(var(--primary),0.15)] ring-1 ring-border/50">
-        <iframe
-          src={`https://www.youtube.com/embed/${song.youtubeId}?autoplay=1`}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
-          className="absolute inset-0 w-full h-full border-0"
-        />
+        <div ref={containerRef} className="absolute inset-0 w-full h-full" />
       </div>
-      
+
       <div className="px-2">
         <div className="inline-flex items-center gap-2 px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-semibold uppercase tracking-wider mb-2 border border-primary/20">
           <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />

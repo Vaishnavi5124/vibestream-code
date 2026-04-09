@@ -3,13 +3,15 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   useVoteSong,
   useDeleteSong,
+  useAddSong,
   getListSongsQueryKey,
   getGetPlaylistStatsQueryKey,
+  type Song,
 } from "@workspace/api-client-react";
-import type { Song } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Play, Trash2, ArrowUp, ArrowDown, Music } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -32,15 +34,8 @@ export function SongList({ songs, playingId, onPlay }: SongListProps) {
     },
   });
 
-  const deleteMutation = useDeleteSong({
-    mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListSongsQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getGetPlaylistStatsQueryKey() });
-        toast({ title: "Song removed" });
-      },
-    },
-  });
+  const deleteMutation = useDeleteSong();
+  const addSongMutation = useAddSong();
 
   const handleVote = (
     id: number,
@@ -51,9 +46,60 @@ export function SongList({ songs, playingId, onPlay }: SongListProps) {
     voteMutation.mutate({ id, data: { direction } });
   };
 
-  const handleDelete = (id: number, e: React.MouseEvent) => {
+  const handleDelete = (song: Song, e: React.MouseEvent) => {
     e.stopPropagation();
-    deleteMutation.mutate({ id });
+
+    deleteMutation.mutate(
+      { id: song.id },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListSongsQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetPlaylistStatsQueryKey() });
+
+          toast({
+            title: "Song removed",
+            description: `"${song.title}" was removed from the queue.`,
+            action: (
+              <ToastAction
+                altText="Undo delete"
+                onClick={() => {
+                  addSongMutation.mutate(
+                    {
+                      data: {
+                        youtubeUrl: `https://youtu.be/${song.youtubeId}`,
+                        title: song.title,
+                        addedBy: song.addedBy,
+                      },
+                    },
+                    {
+                      onSuccess: () => {
+                      queryClient.invalidateQueries({ queryKey: getListSongsQueryKey() });
+                      queryClient.invalidateQueries({
+                        queryKey: getGetPlaylistStatsQueryKey(),
+                      });
+                      toast({
+                        title: "Song restored",
+                        description: `"${song.title}" is back in the queue.`,
+                      });
+                      },
+                      onError: () => {
+                        toast({
+                          title: "Restore failed",
+                          description: "Could not undo the delete. Try again.",
+                          variant: "destructive",
+                        });
+                      },
+                    },
+                  );
+                }}
+              >
+                Undo
+              </ToastAction>
+            ),
+          });
+        },
+      },
+    );
   };
 
   if (songs.length === 0) {
@@ -168,7 +214,7 @@ export function SongList({ songs, playingId, onPlay }: SongListProps) {
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8 ml-2 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/20"
-                  onClick={(e) => handleDelete(song.id, e)}
+                  onClick={(e) => handleDelete(song, e)}
                 >
                   <Trash2 className="w-4 h-4" />
                 </Button>
