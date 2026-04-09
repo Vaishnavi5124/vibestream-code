@@ -1,0 +1,123 @@
+import { useState, useEffect, useRef } from "react";
+import { useListSongs, getListSongsQueryKey } from "@workspace/api-client-react";
+import { AddSongForm } from "@/components/add-song-form";
+import { SongList } from "@/components/song-list";
+import { PlaylistStatsCard } from "@/components/playlist-stats";
+import { Player } from "@/components/player";
+import { Radio } from "lucide-react";
+
+const PLAY_COUNTS_STORAGE_KEY = "vibestream-play-counts";
+
+export function Home() {
+  const { data: songs, isLoading } = useListSongs({
+    query: { queryKey: getListSongsQueryKey() }
+  });
+  
+  const [playingId, setPlayingId] = useState<number | null>(null);
+  const [playCounts, setPlayCounts] = useState<Record<number, number>>(() => {
+    if (typeof window === "undefined") {
+      return {};
+    }
+
+    try {
+      const stored = window.localStorage.getItem(PLAY_COUNTS_STORAGE_KEY);
+      return stored ? JSON.parse(stored) as Record<number, number> : {};
+    } catch {
+      return {};
+    }
+  });
+  const previousPlayingId = useRef<number | null>(null);
+
+  // Auto-play first song if none playing and songs exist
+  useEffect(() => {
+    if (!playingId && songs && songs.length > 0) {
+      // Find the highest voted song or just the first one
+      const topSong = [...songs].sort((a, b) => b.votes - a.votes)[0];
+      setPlayingId(topSong.id);
+    }
+  }, [songs, playingId]);
+
+  useEffect(() => {
+    if (!playingId || previousPlayingId.current === playingId) {
+      return;
+    }
+
+    previousPlayingId.current = playingId;
+
+    setPlayCounts((current) => {
+      const next = {
+        ...current,
+        [playingId]: (current[playingId] ?? 0) + 1,
+      };
+
+      window.localStorage.setItem(PLAY_COUNTS_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, [playingId]);
+
+  const playingSong = songs?.find(s => s.id === playingId) || null;
+
+  return (
+    <div className="min-h-[100dvh] bg-background text-foreground relative overflow-hidden selection:bg-primary/30">
+      {/* Ambient background glows */}
+      <div className="fixed top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-primary/20 blur-[120px] pointer-events-none" />
+      <div className="fixed bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-accent/10 blur-[120px] pointer-events-none" />
+      
+      <div className="max-w-6xl mx-auto px-4 py-8 md:py-12 relative z-10">
+        
+        {/* Header */}
+        <header className="flex items-center gap-3 mb-10">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-lg shadow-primary/20">
+            <Radio className="w-6 h-6 text-white" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-extrabold font-display tracking-tight text-white bg-clip-text text-transparent bg-gradient-to-r from-white to-white/70">
+              For You
+            </h1>
+            <p className="text-sm text-muted-foreground font-medium">our playlist</p>
+          </div>
+        </header>
+
+        <PlaylistStatsCard songs={songs || []} playCounts={playCounts} />
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
+          
+          {/* Main Left Column (Player + Add) */}
+          <div className="lg:col-span-7 flex flex-col gap-8 sticky top-8">
+            <Player song={playingSong} />
+            <AddSongForm />
+          </div>
+
+          {/* Right Column (Queue) */}
+          <div className="lg:col-span-5 flex flex-col h-full">
+            <div className="flex items-center justify-between mb-4 px-1">
+              <h3 className="font-display font-bold text-xl flex items-center gap-2">
+                Up Next 
+                <span className="text-sm font-normal text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">
+                  {songs?.length || 0} tracks
+                </span>
+              </h3>
+            </div>
+            
+            <div className="flex-1 bg-card/20 border border-border/30 rounded-2xl p-4 backdrop-blur-sm min-h-[500px]">
+              {isLoading ? (
+                <div className="space-y-4">
+                  {[1, 2, 3, 4].map(i => (
+                    <div key={i} className="h-20 bg-card/40 rounded-xl animate-pulse" />
+                  ))}
+                </div>
+              ) : (
+                <SongList 
+                  songs={songs || []} 
+                  playingId={playingId} 
+                  onPlay={setPlayingId} 
+                />
+              )}
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+}

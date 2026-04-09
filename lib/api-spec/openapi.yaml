@@ -1,0 +1,197 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: songs
+    description: Song playlist operations
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /songs:
+    get:
+      operationId: listSongs
+      tags: [songs]
+      summary: List all songs in the playlist
+      responses:
+        "200":
+          description: List of songs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Song"
+    post:
+      operationId: addSong
+      tags: [songs]
+      summary: Add a song to the playlist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddSongBody"
+      responses:
+        "201":
+          description: Song added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Song"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /songs/{id}:
+    delete:
+      operationId: deleteSong
+      tags: [songs]
+      summary: Remove a song from the playlist
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Song removed
+        "404":
+          description: Song not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /songs/{id}/votes:
+    post:
+      operationId: voteSong
+      tags: [songs]
+      summary: Vote a song up or down
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoteSongBody"
+      responses:
+        "200":
+          description: Updated song
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Song"
+        "404":
+          description: Song not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /songs/stats:
+    get:
+      operationId: getPlaylistStats
+      tags: [songs]
+      summary: Get playlist stats
+      responses:
+        "200":
+          description: Playlist stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaylistStats"
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    Song:
+      type: object
+      properties:
+        id:
+          type: integer
+        youtubeId:
+          type: string
+        title:
+          type: string
+        addedBy:
+          type: string
+        votes:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - youtubeId
+        - title
+        - addedBy
+        - votes
+        - createdAt
+    AddSongBody:
+      type: object
+      properties:
+        youtubeUrl:
+          type: string
+        title:
+          type: string
+        addedBy:
+          type: string
+      required:
+        - youtubeUrl
+        - addedBy
+    VoteSongBody:
+      type: object
+      properties:
+        direction:
+          type: string
+          enum: [up, down]
+      required:
+        - direction
+    PlaylistStats:
+      type: object
+      properties:
+        totalSongs:
+          type: integer
+        topSong:
+          $ref: "#/components/schemas/Song"
+        recentSong:
+          $ref: "#/components/schemas/Song"
+      required:
+        - totalSongs
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error

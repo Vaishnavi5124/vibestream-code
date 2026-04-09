@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: vibestream
+    runtime: node
+    plan: free
+    rootDir: .
+    buildCommand: pnpm install --frozen-lockfile && pnpm run build
+    startCommand: pnpm --filter @workspace/api-server run start
+    healthCheckPath: /api/healthz
+    envVars:
+      - key: NODE_VERSION
+        value: 24
+      - key: DATABASE_URL
+        sync: false

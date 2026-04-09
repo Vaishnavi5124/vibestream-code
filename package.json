@@ -1,0 +1,20 @@
+{
+  "name": "workspace",
+  "version": "0.0.0",
+  "license": "MIT",
+  "scripts": {
+    "preinstall": "node ./scripts/preinstall-check.mjs",
+    "dev": "node ./scripts/dev.mjs",
+    "start": "pnpm run dev",
+    "frontend": "pnpm --filter @workspace/vibestream run dev",
+    "backend": "pnpm --filter @workspace/api-server run dev",
+    "build": "pnpm run typecheck && pnpm --filter @workspace/api-server run build && pnpm --filter @workspace/vibestream run build",
+    "typecheck:libs": "tsc --build",
+    "typecheck": "pnpm run typecheck:libs && pnpm --filter @workspace/api-server run typecheck && pnpm --filter @workspace/vibestream run typecheck"
+  },
+  "private": true,
+  "devDependencies": {
+    "typescript": "~5.9.2",
+    "prettier": "^3.8.1"
+  }
+}
