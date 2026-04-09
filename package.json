@@ -5,7 +5,7 @@
   "scripts": {
     "preinstall": "node ./scripts/preinstall-check.mjs",
     "dev": "node ./scripts/dev.mjs",
-    "start": "pnpm run dev",
+    "start": "pnpm --filter @workspace/api-server run start",
     "frontend": "pnpm --filter @workspace/vibestream run dev",
     "backend": "pnpm --filter @workspace/api-server run dev",
     "build": "pnpm run typecheck && pnpm --filter @workspace/api-server run build && pnpm --filter @workspace/vibestream run build",
