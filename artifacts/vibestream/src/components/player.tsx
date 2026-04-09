@@ -13,7 +13,6 @@ declare global {
 
 interface YouTubePlayer {
   destroy: () => void;
-  loadVideoById: (videoId: string) => void;
 }
 
 interface YouTubeNamespace {
@@ -72,7 +71,6 @@ export function Player({ song, onEnded }: PlayerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<YouTubePlayer | null>(null);
   const onEndedRef = useRef(onEnded);
-  const loadedSongIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     onEndedRef.current = onEnded;
@@ -90,31 +88,28 @@ export function Player({ song, onEnded }: PlayerProps) {
         return;
       }
 
-      if (!playerRef.current) {
-        playerRef.current = new YT.Player(containerRef.current, {
-          videoId: song.youtubeId,
-          playerVars: {
-            autoplay: 1,
-            rel: 0,
-            playsinline: 1,
-          },
-          events: {
-            onStateChange: (event) => {
-              if (event.data === YT.PlayerState.ENDED) {
-                onEndedRef.current();
-              }
-            },
-          },
-        });
+      playerRef.current?.destroy();
+      containerRef.current.innerHTML = "";
 
-        loadedSongIdRef.current = song.youtubeId;
-        return;
-      }
-
-      if (loadedSongIdRef.current !== song.youtubeId) {
-        playerRef.current.loadVideoById(song.youtubeId);
-        loadedSongIdRef.current = song.youtubeId;
-      }
+      playerRef.current = new YT.Player(containerRef.current, {
+        videoId: song.youtubeId,
+        playerVars: {
+          autoplay: 1,
+          rel: 0,
+          playsinline: 1,
+          modestbranding: 1,
+          iv_load_policy: 3,
+          start: 0,
+          origin: window.location.origin,
+        },
+        events: {
+          onStateChange: (event) => {
+            if (event.data === YT.PlayerState.ENDED) {
+              onEndedRef.current();
+            }
+          },
+        },
+      });
     });
 
     return () => {
@@ -126,7 +121,6 @@ export function Player({ song, onEnded }: PlayerProps) {
     return () => {
       playerRef.current?.destroy();
       playerRef.current = null;
-      loadedSongIdRef.current = null;
     };
   }, []);
 
